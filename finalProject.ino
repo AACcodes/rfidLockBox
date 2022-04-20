@@ -15,8 +15,6 @@ Servo frank;
 
 MFRC522 mfrc522(SS_PIN, RST_PIN);   // Create MFRC522 instance.
 
-MFRC522::MIFARE_Key key;
-
 void setup() {
   // put your setup code here, to run once:
   pinMode(DEBUG_LOCK, INPUT);
@@ -31,19 +29,11 @@ void setup() {
   lcd.print("Unlocked");
   lcd.display(); 
 
-
   Serial.begin(9600); // Initialize serial communications with the PC
   while (!Serial);    // Do nothing if no serial port is opened (added for Arduinos based on ATMEGA32U4)
   SPI.begin();        // Init SPI bus
   mfrc522.PCD_Init(); // Init MFRC522 card
-
-  // Prepare the key (used both as key A and as key B
-  // using FFFFFFFFFFFFh which is the default at chip delivery from the factory
-  for (byte i = 0; i < 6; i++) {
-      key.keyByte[i] = 0xFF;
-  }
 }
-
 
 boolean locked = false;
 
@@ -96,8 +86,9 @@ void handle_rfid() {
     if (compatibility_check() != 0) { return; }
 
     // Read data from RFID tag and make sure read was successful
-    status = (MFRC522::StatusCode) mfrc522.MIFARE_Read(blockAddr, buffer, &size);
-    if (status != MFRC522::STATUS_OK) { return ; }
+    if ((MFRC522::StatusCode) mfrc522.MIFARE_Read(blockAddr, buffer, &size) != MFRC522::STATUS_OK) {
+        return;
+    }
 
     // Check that the password is correct
     for (int i = 0; i < size; i++) {
@@ -112,8 +103,9 @@ void handle_rfid() {
 
 // Write data to the block and check that the write succeeded
 void write_rfid() {
-    status = (MFRC522::StatusCode) mfrc522.MIFARE_Write(blockAddr, password, 16);
-    if (status != MFRC522::STATUS_OK) { return; }
+    if ((MFRC522::StatusCode) mfrc522.MIFARE_Write(blockAddr, password, 16) != MFRC522::STATUS_OK) {
+        return;
+    }
 }
 
 /// Main loop
