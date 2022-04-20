@@ -1,62 +1,65 @@
 #include <ESP32Servo.h>
-#define DEBUG_LOCK 0
-#define WRITE_RFID 34
-#define SERVO1 23
 #include <Adafruit_SSD1306.h>
-Adafruit_SSD1306 lcd(128, 64);
-Servo frank;
-
-//RFID stuff
 #include <SPI.h>
 #include <MFRC522.h>
 
-#define RST_PIN         27           // Configurable, see typical pin layout above
-#define SS_PIN          SDA          // Configurable, see typical pin layout above
+#define DEBUG_LOCK 0
+#define WRITE_RFID 34
+#define SERVO1 23
+#define RST_PIN 27
+#define SS_PIN SDA
 
-MFRC522 mfrc522(SS_PIN, RST_PIN);   // Create MFRC522 instance.
-
-void setup() {
-  // put your setup code here, to run once:
-  pinMode(DEBUG_LOCK, INPUT);
-  pinMode(WRITE_RFID, INPUT);
-  frank.attach(SERVO1);
-  //set servo to 90 degrees for start
-  frank.write(90);
-  lcd.begin(SSD1306_SWITCHCAPVCC, 0x3C);
-  lcd.setTextColor(WHITE); 
-  lcd.clearDisplay();
-  lcd.setCursor(0,0);
-  lcd.print("Unlocked");
-  lcd.display(); 
-
-  Serial.begin(9600); // Initialize serial communications with the PC
-  while (!Serial);    // Do nothing if no serial port is opened (added for Arduinos based on ATMEGA32U4)
-  SPI.begin();        // Init SPI bus
-  mfrc522.PCD_Init(); // Init MFRC522 card
-}
-
+MFRC522 mfrc522(SS_PIN, RST_PIN);
+Adafruit_SSD1306 lcd(128, 64);
+Servo servo;
 boolean locked = false;
 
-void updateLock() {
-  if(locked){
-    frank.write(180);
-    lcd.clearDisplay();
-    lcd.setCursor(0,0);
-    lcd.print("Locked");
-    lcd.display(); 
-    delay(100);//smoothness
-  }else{
-    frank.write(90);
+void setup() {
+    // Initialize RFID interface
+    SPI.begin();
+    mfrc522.PCD_Init();
+
+    // Setup buttons
+    pinMode(DEBUG_LOCK, INPUT);
+    pinMode(WRITE_RFID, INPUT);
+
+    // Initialize Servo to 90 degrees
+    servo.attach(SERVO1);
+    servo.write(90);
+
+    // Initialize 
+    lcd.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+    lcd.setTextColor(WHITE); 
     lcd.clearDisplay();
     lcd.setCursor(0,0);
     lcd.print("Unlocked");
-    lcd.display();
-    delay(100);//smoothness
-  }
+    lcd.display(); 
 }
 
-byte blockAddr    = 4;
-byte trailerBlock = 7;
+
+// Update the lock based on the `locked` variable
+void updateLock() {
+    if (locked) {
+        servo.write(180);
+        lcd.clearDisplay();
+        lcd.setCursor(0,0);
+        lcd.print("Locked");
+        lcd.display(); 
+        delay(100);
+    } else {
+        servo.write(90);
+        lcd.clearDisplay();
+        lcd.setCursor(0,0);
+        lcd.print("Unlocked");
+        lcd.display();
+        delay(100);
+    }
+}
+
+// Region in which the password is stored on the rfid chip
+byte blockAddr = 4;
+
+// Password used to unlock the box
 byte password[]   = {
         0x41, 0x41, 0x41, 0x41,
         0x41, 0x41, 0x41, 0x41,
@@ -108,10 +111,9 @@ void write_rfid() {
     }
 }
 
-/// Main loop
 void loop() {
     // RFID chip in use
-    if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) { 
+    if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
         handle_rfid();
     }
 
