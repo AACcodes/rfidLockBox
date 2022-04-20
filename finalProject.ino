@@ -1,5 +1,6 @@
 #include <ESP32Servo.h>
-#define BUTTON 0
+#define DEBUG_LOCK 0
+#define WRITE_RFID 34
 #define SERVO1 23
 #include <Adafruit_SSD1306.h>
 Adafruit_SSD1306 lcd(128, 64);
@@ -18,7 +19,8 @@ MFRC522::MIFARE_Key key;
 
 void setup() {
   // put your setup code here, to run once:
-  pinMode(BUTTON, INPUT);
+  pinMode(DEBUG_LOCK, INPUT);
+  pinMode(WRITE_RFID, INPUT);
   frank.attach(SERVO1);
   //set servo to 90 degrees for start
   frank.write(90);
@@ -45,7 +47,7 @@ void setup() {
 
 boolean locked = false;
 
-void updateLock(){
+void updateLock() {
   if(locked){
     frank.write(180);
     lcd.clearDisplay();
@@ -63,57 +65,75 @@ void updateLock(){
   }
 }
 
-byte blockAddr      = 4;
-byte dataBlock[]    = {
-        0x01, 0x02, 0x03, 0x04, //  1,  2,   3,  4,
-        0x05, 0x06, 0x07, 0x08, //  5,  6,   7,  8,
-        0x09, 0x0a, 0xff, 0x0b, //  9, 10, 255, 11,
-        0x0c, 0x0d, 0x0e, 0x0f  // 12, 13, 14, 15
+byte blockAddr    = 4;
+byte trailerBlock = 7;
+byte password[]   = {
+        0x41, 0x41, 0x41, 0x41,
+        0x41, 0x41, 0x41, 0x41,
+        0x41, 0x41, 0x41, 0x41,
+        0x41, 0x41, 0x41, 0x41,
     };
-byte trailerBlock   = 7;
  
 
-void writeRFID(){
-   mfrc522.MIFARE_Write(blockAddr, dataBlock, 16);
-  
-}
-
-bool authRFID(){
-  mfrc522.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, trailerBlock, &key, &(mfrc522.uid));
-}
-void loop() {
-  // put your main code here, to run repeatedly:
-
-//Button locking feature
-  
-  if(digitalRead(BUTTON) == LOW){
-    delay(50);//debounce
-    if(locked){
-      locked = false;
-    }else{
-      locked = true;
-    }
-  }
-
-
- // Reset the loop if no new card present on the sensor/reader. This saves the entire process when idle.
-    if ( ! mfrc522.PICC_IsNewCardPresent())
-        return;
-
-    // Select one of the cards
-    if ( ! mfrc522.PICC_ReadCardSerial())
-        return;
-
+// Check for compatibility
+int compatibility_check() {
     MFRC522::PICC_Type piccType = mfrc522.PICC_GetType(mfrc522.uid.sak);
-    // Check for compatibility
     if (    piccType != MFRC522::PICC_TYPE_MIFARE_MINI
         &&  piccType != MFRC522::PICC_TYPE_MIFARE_1K
         &&  piccType != MFRC522::PICC_TYPE_MIFARE_4K) {
-        //Serial.println(F("This sample only works with MIFARE Classic cards."));
-        return;
+        return -1;
+    }
+    return 0;
+}
+
+/// In charge of handling RFID interactions
+void handle_rfid() {
+    byte buffer[16];
+    unsigned int check = 0;
+    byte size = 16;
+
+    // If rfid card is not compatible, stop trying to interact
+    if (compatibility_check() != 0) { return; }
+
+    // Read data from RFID tag and make sure read was successful
+    status = (MFRC522::StatusCode) mfrc522.MIFARE_Read(blockAddr, buffer, &size);
+    if (status != MFRC522::STATUS_OK) { return ; }
+
+    // Check that the password is correct
+    for (int i = 0; i < size; i++) {
+        check += buffer[i] ^ password[i];
     }
 
+    // Passed password-check, unlock lock
+    if (check == 0) {
+        locked = false;
+    }
+}
 
-  updateLock();
-  
+// Write data to the block and check that the write succeeded
+void write_rfid() {
+    status = (MFRC522::StatusCode) mfrc522.MIFARE_Write(blockAddr, password, 16);
+    if (status != MFRC522::STATUS_OK) { return; }
+}
+
+/// Main loop
+void loop() {
+    // RFID chip in use
+    if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) { 
+        handle_rfid();
+    }
+
+    // Debugging feature to lock/unlock using button without requiring any authentification
+    if (digitalRead(DEBUG_LOCK) == LOW) {
+        delay(50);
+        locked = !locked;
+    }
+
+    // Initialize RFID Chips that can then be used to authenticate
+    if (digitalRead(WRITE_RFID) == LOW) {
+        delay(50);
+        write_rfid();
+    }
+
+    updateLock();
 }
