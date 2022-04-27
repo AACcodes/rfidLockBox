@@ -16,6 +16,8 @@ boolean locked = false;
 
 void setup() {
     // Initialize RFID interface
+    Serial.begin(9600); // Initialize serial communications with the PC
+    while (!Serial);    // Do nothing if no serial port is opened
     SPI.begin();
     mfrc522.PCD_Init();
 
@@ -27,13 +29,7 @@ void setup() {
     servo.attach(SERVO1);
     servo.write(90);
 
-    // Initialize 
-    lcd.begin(SSD1306_SWITCHCAPVCC, 0x3C);
-    lcd.setTextColor(WHITE); 
-    lcd.clearDisplay();
-    lcd.setCursor(0,0);
-    lcd.print("Unlocked");
-    lcd.display(); 
+    Serial.println("Initializing Devive");
 }
 
 
@@ -84,6 +80,8 @@ void handle_rfid() {
     byte buffer[16];
     unsigned int check = 0;
     byte size = 16;
+
+    Serial.println("HANDLE_RFID hit");
 
     // If rfid card is not compatible, stop trying to interact
     if (compatibility_check() != 0) { return; }
