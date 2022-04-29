@@ -2,6 +2,26 @@
 #include <SPI.h>
 #include <MFRC522.h>
 
+//keypad stuff
+#include <Keypad.h>
+const int ROW_NUM = 4; //four rows
+const int COLUMN_NUM = 3; //three columns
+
+char keys[ROW_NUM][COLUMN_NUM] = {
+  {'1','2','3'},
+  {'4','5','6'},
+  {'7','8','9'},
+  {'*','0','#'}
+};
+
+byte pin_rows[ROW_NUM] = {8, 7, 6,4}; //connect to the row pinouts of the keypad
+byte pin_column[COLUMN_NUM] = {3, 2, SDA}; //connect to the column pinouts of the keypad
+
+
+Keypad keypad = Keypad( makeKeymap(keys), pin_rows, pin_column, ROW_NUM, COLUMN_NUM );;
+
+
+//rfid stuff again
 #define RST_PIN         9           // Configurable, see typical pin layout above
 #define SS_PIN          10          // Configurable, see typical pin layout above
 
@@ -40,7 +60,7 @@ void setup() {
   //connect servo
   servo.attach(5);
   servo.write(90);
-
+  keypad = Keypad( makeKeymap(keys), pin_rows, pin_column, ROW_NUM, COLUMN_NUM );
   Serial.println("Done initializing... ready to scan");
 
 }
@@ -172,6 +192,11 @@ void loop() {
           Serial.println("THE NEXT CARD YOU PRESENT WILL BE WRITTEN TO");
           writeCard = true;
         }
+    }
+    char key = keypad.getKey();
+
+    if (key){
+      Serial.println(key);
     }
 
   // RFID chip in use
