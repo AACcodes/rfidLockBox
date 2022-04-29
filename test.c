@@ -1,87 +1,21 @@
-//RFID stuff
-#include <SPI.h>
-#include <MFRC522.h>
-#include <Servo.h>
-#include <Keypad.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <strings.h>
+#include <time.h>
 
 #define CONST1 0x12345600
 #define CONST2 0x42434400
 #define NUMROWS 2
 
-// RFID globals
-#define RST_PIN         9           // Configurable, see typical pin layout above
-#define SS_PIN          10          // Configurable, see typical pin layout above
-#define SS_PIN          10          // Configurable, see typical pin layout above
-MFRC522 mfrc522(SS_PIN, RST_PIN);   // Create MFRC522 instance.
-MFRC522::MIFARE_Key key;
-MFRC522::StatusCode status;
-byte blockAddr      = 4;
-byte trailerBlock   = 7;
-byte buffer[18];
-byte size = sizeof(buffer);
-
-// Keypad Globals
-const int ROW_NUM = 4; //four rows
-const int COLUMN_NUM = 3; //three columns
-byte pin_rows[ROW_NUM] = {8, 7, 6,4}; //connect to the row pinouts of the keypad
-byte pin_column[COLUMN_NUM] = {3, 2, SDA}; //connect to the column pinouts of the keypad
-Keypad keypad = Keypad( makeKeymap(keys), pin_rows, pin_column, ROW_NUM, COLUMN_NUM );;
-
-char keys[ROW_NUM][COLUMN_NUM] = {
-    {'1','2','3'},
-    {'4','5','6'},
-    {'7','8','9'},
-    {'*','0','#'}
-};
-
-// Other globals
-Servo servo;
-boolean locked = false;
-boolean writeCard = false;
-String input;
-String password = "stupidESP";
-
-// Password used to unlock the box
-char hashed_key[]   = {
+char encrypted_key[]   = {
         0x4b, 0xa6, 0x52, 0xd5, 0x91, 0x49, 0x32, 0x95,
         0x52, 0xbf, 0x41, 0xc6, 0x93, 0x83, 0xfa, 0x0d,
     };
 
-// Original key, needed to write rfid tags
-char orig_key[]   = {
+char buffer[]   = {
         0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48,
         0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f, 0x50,
     };
-
-void setup() {
-    Serial.begin(9600);
-    Serial.println("Initializing system");
-
-    SPI.begin();        // Init SPI bus
-    mfrc522.PCD_Init(); // Init MFRC522 card
-
-    // Prepare Key A using 0xFFFFFFFFFFFF which is the default at chip delivery from the factory
-    for (byte i = 0; i < 6; i++) {
-        key.keyByte[i] = 0xFF;
-    }
- 
-    // Connect the servo-motor
-    servo.attach(5);
-    servo.write(90);
-
-    // Initialize keypad
-    keypad = Keypad(makeKeymap(keys), pin_rows, pin_column, ROW_NUM, COLUMN_NUM );
-
-    Serial.println("Done initializing... ready to scan");
-}
-
-void updateLock() {
-    if (locked) {
-        servo.write(180);
-    } else {
-        servo.write(90);
-    }
-}
 
 /// Compute a quick non-cryptographically secure hash for the passwords. Since no knowledge about
 /// the correct password is exposed to the attacker, hash collisions are no concern.
@@ -102,7 +36,7 @@ void hash_password() {
         }
     }
 }
- 
+
 /// This is basically a way-complicated memcmp to greatly mitigate a class of hardware based attacks
 /// called sidechannels. 2 popular approaches attacks are power analysis and fault injections. 
 ///
@@ -174,7 +108,7 @@ int validate_pw(int n) {
             tmpdiff = (CONST1 | CONST2);
         } else {
             check++;
-            tmpdiff = ((CONST1 | buffer[idx]) ^ (CONST2 | hashed_key[idx]));
+            tmpdiff = ((CONST1 | buffer[idx]) ^ (CONST2 | encrypted_key[idx]));
             decoy   = (CONST1 | CONST2);
         }
 
@@ -191,7 +125,7 @@ int validate_pw(int n) {
     return check == 3 ? diff : 0;
 }
 
-void authenticate() {
+int main() {
     // Initialize to non-zero so the authentication call can't trivially be bypassed by glitching
     // the function call instruction
     volatile int result = 7;
@@ -199,139 +133,31 @@ void authenticate() {
     volatile int wait = 0;
     volatile int check;
 
-    Serial.println(F("Authenticating using key A..."));
-    status = (MFRC522::StatusCode) mfrc522.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, 
-        trailerBlock, &key, &(mfrc522.uid));
-
-    if (status != MFRC522::STATUS_OK) {
-        Serial.print(F("PCD_Authenticate() failed: "));
-        Serial.println(mfrc522.GetStatusCodeName(status));
-        mfrc522.PICC_HaltA();
-        mfrc522.PCD_StopCrypto1();
-        return;
-    }
-
-    // Read data from the block
-    Serial.print(F("Reading data from block ")); 
-    Serial.print(blockAddr);
-    Serial.println(F(" ..."));
-
-    status = (MFRC522::StatusCode) mfrc522.MIFARE_Read(blockAddr, buffer, &size);
-    if (status != MFRC522::STATUS_OK) {
-        Serial.print(F("MIFARE_Read() failed: "));
-        Serial.println(mfrc522.GetStatusCodeName(status));
-        mfrc522.PICC_HaltA();
-        mfrc522.PCD_StopCrypto1();
-        return;
-    }
-
     hash_password();
 
-    // Password validation routine. 
-    {
-        result = validate_pw(16);
-        if (result == (CONST1 | CONST2)) {
-            wait = rand() % 10;
-            for (int i = 0; i < wait; i++) {
-                check = check + 1;
+    srand(time(NULL));
+
+    result = validate_pw(16);
+    if (result == (CONST1 | CONST2)) {
+        wait = rand() % 10;
+        for (int i = 0; i < wait; i++) {
+            check = check + 1;
+        }
+
+        // Verify that no fault has occured thus far
+        if (check == wait) {
+            // Recompute the result
+            result2 = validate_pw(16);
+
+            // Double check result, this time with a different logic that is slightly different
+            // from the previous one
+            if ((result2 & 0xff) == 0x0) {
+                printf("unlocked");
+                return 0;
             }
-
-            // Verify that no fault has occured thus far
-            if (check == wait) {
-                // Recompute the result
-                result2 = validate_pw(16);
-
-                // Double check result, this time with a different logic that is slightly different
-                // from the previous one
-                if ((result2 & 0xff) == 0x0) {
-                    locked = !locked;
-                }
-            }
         }
     }
-
-    Serial.print(F("Data in block ")); 
-    Serial.print(blockAddr); 
-    Serial.println(F(":"));
-    dump_byte_array(buffer, 16); 
-    Serial.println();
-    Serial.println();
-    mfrc522.PICC_HaltA();
-    mfrc522.PCD_StopCrypto1();
-    Serial.println("Read done");
+    printf("failed: %x", result);
+    return 0;
 }
 
-void programCard() {
-    Serial.println(F("Authenticating using key A..."));
-    status = (MFRC522::StatusCode) mfrc522.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, 
-        trailerBlock, &key, &(mfrc522.uid));
-
-    if (status != MFRC522::STATUS_OK) {
-        Serial.print(F("PCD_Authenticate() failed: "));
-        Serial.println(mfrc522.GetStatusCodeName(status));
-        mfrc522.PICC_HaltA();
-        mfrc522.PCD_StopCrypto1();
-        return;
-    }
-
-   //write data to block
-   Serial.print(F("Writing data into block ")); Serial.print(blockAddr);
-   Serial.println(F(" ..."));
-   dump_byte_array(orig_key, 16); Serial.println();
-   status = (MFRC522::StatusCode) mfrc522.MIFARE_Write(blockAddr, orig_key, 16);
-   if (status != MFRC522::STATUS_OK) {
-        Serial.print(F("MIFARE_Write() failed: "));
-        Serial.println(mfrc522.GetStatusCodeName(status));
-        mfrc522.PICC_HaltA();
-        mfrc522.PCD_StopCrypto1();
-        return;
-   }
-
-   Serial.println();
-   mfrc522.PICC_HaltA();
-   mfrc522.PCD_StopCrypto1();
-   Serial.println("Write done");
-}
-
-void loop() {
-  // Manual override to unlock without key
-  while (Serial.available()) {
-        input = Serial.readStringUntil('\n');
-        Serial.print("You typed: ");
-        Serial.println(input);
-        if (input == password) {
-            Serial.println("Auth correct. Lock toggled");
-            locked = !locked;
-        } else if (input == "write") {
-            Serial.println("THE NEXT CARD YOU PRESENT WILL BE WRITTEN TO");
-            writeCard = true;
-        }
-    }
-
-    char key = keypad.getKey();
-
-    if (key) {
-        Serial.println(key);
-    }
-
-    // RFID chip in use
-    if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
-        if (writeCard) {
-            writeCard = false;
-            programCard();
-        } else {
-            authenticate();
-        }
-        // Delay to prevant too fast rescan
-        delay(800);
-    }
-    updateLock();
-}
-
-/// Helper routine to dump a byte array as hex values to Serial.
-void dump_byte_array(byte *buffer, byte bufferSize) {
-    for (byte i = 0; i < bufferSize; i++) {
-        Serial.print(buffer[i] < 0x10 ? " 0" : " ");
-        Serial.print(buffer[i], HEX);
-    }
-}
