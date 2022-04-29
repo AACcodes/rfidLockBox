@@ -8,7 +8,30 @@
 #define CONST2 0x42434400
 #define NUMROWS 2
 
+<<<<<<< HEAD
 // RFID globals
+=======
+//keypad stuff
+#include <Keypad.h>
+const int ROW_NUM = 4; //four rows
+const int COLUMN_NUM = 3; //three columns
+
+char keys[ROW_NUM][COLUMN_NUM] = {
+  {'1','2','3'},
+  {'4','5','6'},
+  {'7','8','9'},
+  {'*','0','#'}
+};
+
+byte pin_rows[ROW_NUM] = {8, 7, 6,4}; //connect to the row pinouts of the keypad
+byte pin_column[COLUMN_NUM] = {3, 2, SDA}; //connect to the column pinouts of the keypad
+
+
+Keypad keypad = Keypad( makeKeymap(keys), pin_rows, pin_column, ROW_NUM, COLUMN_NUM );;
+
+
+//rfid stuff again
+>>>>>>> 12303b6ec43ace6e261a39017e6a51a321b4145d
 #define RST_PIN         9           // Configurable, see typical pin layout above
 #define SS_PIN          10          // Configurable, see typical pin layout above
 #define SS_PIN          10          // Configurable, see typical pin layout above
@@ -57,6 +80,7 @@ void setup() {
     Serial.begin(9600);
     Serial.println("Initializing system");
 
+<<<<<<< HEAD
     SPI.begin();        // Init SPI bus
     mfrc522.PCD_Init(); // Init MFRC522 card
 
@@ -68,6 +92,13 @@ void setup() {
     // Connect the servo-motor
     servo.attach(5);
     servo.write(90);
+=======
+  //connect servo
+  servo.attach(5);
+  servo.write(90);
+  keypad = Keypad( makeKeymap(keys), pin_rows, pin_column, ROW_NUM, COLUMN_NUM );
+  Serial.println("Done initializing... ready to scan");
+>>>>>>> 12303b6ec43ace6e261a39017e6a51a321b4145d
 
     // Initialize keypad
     keypad = Keypad(makeKeymap(keys), pin_rows, pin_column, ROW_NUM, COLUMN_NUM );
@@ -306,6 +337,11 @@ void loop() {
             Serial.println("THE NEXT CARD YOU PRESENT WILL BE WRITTEN TO");
             writeCard = true;
         }
+    }
+    char key = keypad.getKey();
+
+    if (key){
+      Serial.println(key);
     }
 
     char key = keypad.getKey();
